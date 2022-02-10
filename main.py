@@ -1,6 +1,7 @@
 import cv2
 import numpy as np
 import os
+import final_strawberry
 
 #location of Pictures
 pictures = "C:\\Users\\gerwi\\Dropbox\\uni\\BA_Erdbeeren\\Datasets\\exp\\crops\\"
@@ -37,7 +38,7 @@ def getrgbcontourimage(img, colors):
     ''' Function processes Image into a black and white shape of the original,
     uncomment the linecomment with join, to get all the contours find with the parameters in colors'''
     dif = {}  #stores area as key and contour as value
-    join = np.zeros((img.shape[0],1), np.uint8)
+    #join = np.zeros((img.shape[0],1), np.uint8)
     for col in range(len(colors)):
 ########find strawberry in hsv plane
         hsvimage = cv2.cvtColor(img.copy(), cv2.COLOR_BGR2HSV)
@@ -47,8 +48,8 @@ def getrgbcontourimage(img, colors):
         kernel = np.ones((2, 2))  # initial 5,5 smaler kernel works better with smaller pictures
         dialimage = cv2.dilate(edgeimage, kernel, iterations=2)  # initial 2
         first = cv2.erode(dialimage, kernel, iterations=1)  # initial 1
-        join = np.hstack((join, first))
-        cv2.imshow("finder", join); cv2.waitKey(0)
+        #join = np.hstack((join, first))
+        #cv2.imshow("finder", join); cv2.waitKey(0)
 
 ########find maximum contour of this colour setting:
         contours, hierachy = cv2.findContours(first, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
@@ -327,16 +328,16 @@ def bestpic(folderpath, folder1,colors):
             image = cv2.imread(file)
             #print(file)
 
-    #use all the processing functions and save accordingly
+#use all the processing functions and save accordingly
             first = getrgbcontourimage(image, colors)[0]
-
-    # calculate area of raw found shape
-            arearaw = countpixels(first)
 
     # calculate area of the convex hull picture
             sec = getcontour(first)
             third = convexHull(sec)
             areaconvex = countpixels(third)
+
+    # calculate area of raw found shape
+            arearaw = countpixels(first)
 
     # calculate difference
             dif = areaconvex - arearaw
@@ -347,10 +348,10 @@ def bestpic(folderpath, folder1,colors):
                 best = image
                 dif1 = dif
 
-    return processallsteps(image,colors)
+    return processallsteps(best,colors)
 
 
-'''Grade strawberies Function: under construction
+'''Grade strawberies Function:
 Function takes the processed data of the best picture and uses the convex picture to create a mask and lay it over the 
 original image. It then uses predefined constants, 5 in total, to distinguish the ripeness
 1...white color in the picture -> still a flower
@@ -361,59 +362,68 @@ original image. It then uses predefined constants, 5 in total, to distinguish th
 Input: tuple of tuples: ((img,image,image,image),float)
 Output: integer'''
 def grade(imagetuple):
-    # colorconstants: list of lists containing: 0_colorconstant1, 1_colorconstant2, 2_number of state, 3_description of state
+    # colorconstants: list of lists containing: 0_colorconstantlower, 1_colorconstantupper, 2_number of state, 3_description of state
     colorconstants = [
-          [np.array([0,50,55]),np.array([13,255,255]), 1,"still a Flower"],     #color found from testenv.py using colors.jpg
-          [np.array([0,121,67]),np.array([7,255,255]), 2, "still green"],    #color found from testenv.py using right000005.jpg
-          [np.array([0,189,105]),np.array([20,255,255]), 3, "almost ready"],  #color found from testenv.py using right0004065.jpg
-          [np.array([0,205,69]),np.array([179,255,255]), 4, "perfect Strawberry"],  #color found from testenv.py using right0004065.jpg
-          [np.array([14,92,119]),np.array([35,200,255]), 5, "your old man"],  #color found from testenv.py using pics in StrawberyNotReady folder
-          #[np.array([0,34,67]),np.array([56,255,255]), 6, "green1"]   #colour found from testenv.py using right0001963.jpg
-          ]
-    area1 = 1.
-    code = (0,0)
+        [np.array([0, 0, 200]), np.array([202, 45, 255]), 1, "still a Flower"],
+        [np.array([47, 84, 42]), np.array([73, 255, 255]), 2, "still green"],
+        [np.array([0, 79, 180]), np.array([14, 172, 255]), 3, "almost ready"],
+        [np.array([0, 184, 100]), np.array([10, 255, 255]), 4, "perfect Strawberry"],
+        [np.array([0, 0, 39]), np.array([10, 255, 150]), 5, "old Strawberry"]
+    ]
+    dominant = {0:0,1:0,2:0,3:0,4:0,5:0}
 
-    # get the contour and original image:
-    conveximage = imagetuple[0][2].copy()
+    # get the contour and original image, get rid of the black boundary
+    cut = 100
+    scale = 4
+    conveximage = imagetuple[0][2][cut:-cut,cut:-cut].copy()
+    conveximage = cv2.resize(conveximage, (int(conveximage.shape[1]*scale),int(conveximage.shape[0]*scale)))
+    original = imagetuple[0][0][cut:-cut,cut:-cut].copy()
+    original = cv2.resize(original, (int(original.shape[1] * scale), int(original.shape[0] * scale)))
+
+    # find contour of the convex form
     contour = getcontour(conveximage)[1]
-    original = imagetuple[0][0].copy()
 
     # create mask of contour and only show part of original picture in that mask
     stencil = np.zeros(original.shape).astype(original.dtype)
     stencil = cv2.fillPoly(stencil, pts=[contour], color=(255, 255, 255))
     result = cv2.bitwise_and(original, stencil)
-    #cv2.imshow("scoped", result); cv2.waitKey(0)
+    #cv2.imshow("scoped", result); cv2.waitKey(1)
 
-    # create hsv plane and check for constants
-    for col in colorconstants:
-        hsvimage = cv2.cvtColor(result, cv2.COLOR_BGR2HSV)
-        blurhsv = cv2.GaussianBlur(hsvimage, (5, 5), 0)  # optional, does not do that much, initial (5,5)
-        mask = cv2.inRange(blurhsv, col[0], col[1])
-        edgeimage = cv2.Canny(mask, 50, 100, 20)
-        kernel = np.ones((2, 2))  # initial 5,5 smaler kernel works better with smaller pictures
-        dialimage = cv2.dilate(edgeimage, kernel, iterations=2)  # initial 2
-        first = cv2.erode(dialimage, kernel, iterations=1)  # initial 1
-        #cv2.imshow("findings", first); cv2.waitKey(0)
+    # preprocess picture to check for colour constants
+    hsvimage = cv2.cvtColor(result, cv2.COLOR_BGR2HSV)
+
+    # create step loop vertical
+    step = 40
+
+    for part in range(step,hsvimage.shape[1],step):
+        #stripe ... stripe of the picture to be checked for colour
+        stripe = hsvimage[:, part-step:part]
+        stripe = cv2.copyMakeBorder(stripe,5,5,5,5,cv2.BORDER_CONSTANT,value=(255,255,255))
+
+    # create loop through colour constants for each stripe
+        for color in colorconstants:
+            mask = cv2.inRange(stripe, color[0], color[1])
+            #cv2.imshow("stripe", mask); cv2.waitKey(0); cv2.destroyAllWindows()
+            cnts = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)[0]
+            area1 = 0
+            if cnts == ():
+                area1 += 0
+            else:
+                for cont in cnts:
+                    area1 += cv2.contourArea(cont)
 
 
-    # find maximum contour of this colour setting:
-        contours, hierachy = cv2.findContours(first, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
-        try:
-            c = max(contours, key=cv2.contourArea)
-        except ValueError:
-            c = np.array([(1, 1), (0, 0), (0, 1), (1, 0)], dtype=np.int32)
+            up = {color[2]:area1}
+            dominant.update(up)
 
-    # for the maximum area save grading code 1 to 5
-        area = cv2.contourArea(c)
-        if area > area1:
-            area1 = area
-            code = (col[2],col[3])
-
-    # print message of flowertype
-    #print(code)
+    grd = [k for k, v in dominant.items() if v == max(dominant.values())]
+    #print(grd)
+    if len(grd) == 1:
+        grd = grd[0]
+    else: grd = 2
 
     #retrun just the grading number
-    return code[0]
+    return grd
 
 #display functions: Functions that are used to display certain steps of the developement
 def preprocessimghsv(img,colours):
@@ -433,6 +443,7 @@ def displayall(path, colors):
 
     grades = {0:0,1:0,2:0,3:0,4:0,5:0}
     gradesfunc = grades.copy()
+    gradesfunc2 = grades.copy()
 
     # create image files if pictures:
     for file in samples:
@@ -446,13 +457,17 @@ def displayall(path, colors):
             print(file,"Mass: ", steps[1], "Grade: ", steps[2], sep="\t")
 
             g = grade(steps)
-            gradesfunc.update({g:gradesfunc[g]+1})
-            grades.update({steps[2]:grades[steps[2]]+1})
+            if g != 0:
+                gradesfunc.update({g: gradesfunc[g] + 1})
+                grades.update({steps[2]: grades[steps[2]] + 1})
+            else:
+                gradesfunc.update({steps[2]: gradesfunc[steps[2]] + 1})
+                grades.update({steps[2]: grades[steps[2]] + 1})
 
 
             #display all steps
-            cv2.imshow("original -> schape -> convexShape -> turned", np.hstack(steps[0])); cv2.waitKey(100)
-    print(grades, gradesfunc, sep="\n")
+            #cv2.imshow("original -> schape -> convexShape -> turned", np.hstack(steps[0])); cv2.waitKey(100)
+    print("finding Grade:", grades,"DominantFunction: ",  gradesfunc, "oldGrading", gradesfunc2, sep="\n")
 
 # Get data function: Functions that help to get the data
 def getpicspath(folderpath):
@@ -474,7 +489,7 @@ def getpicspath(folderpath):
 '''Display all images and use the functions:'''
 if __name__ == '__main__':
 
-    displayall(pictures,mycolors) #to display all images in strawberry and strawberrynotready folder
+    #displayall(pictures,mycolors) #to display all images in strawberry and strawberrynotready folder
 
     pfad = "C:\\Users\\gerwi\\Dropbox\\uni\\BA_Erdbeeren\\Datasets\\exp\\hole examples\\"
     folders = os.listdir(pfad)
@@ -482,9 +497,10 @@ if __name__ == '__main__':
         if f != "Flower" and f != "StrawberryNotReady" and f != "Strawberry":
             tupleimage = bestpic(pfad,f,mycolors)
             #cv2.imshow("best5", np.hstack(tupleimages[0])); cv2.waitKey(0)
-            #mask = grade(tupleimage)
-            print("Folder: " + f, "Mass: " + str(tupleimage[1]), "Grade: " + str(tupleimage[2]), sep="\t")
+            mask = grade(tupleimage)
+            print("Folder: " + f, "Mass: " + str(tupleimage[1]), "finding Grade: " + str(tupleimage[2]), "DominantGrade: " + str(mask), sep="\t")
             cv2.imshow("best5", np.hstack(tupleimage[0])); cv2.waitKey(0)
+            pass
 
 
 
